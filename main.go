@@ -22,7 +22,7 @@ const (
 	// Version  for application
 	Version = "1.0.0"
 	// PicRegexp regexp pictures root.
-	PicRegexp = `g_img={url: "(\w+)",id:'bgDiv'`
+	PicRegexp = `[^"]+.jpg`
 )
 
 // regexp example:
@@ -55,7 +55,6 @@ func GetAndSave() {
 		log.Println(errors.New("无法访问必应主站，请检查你的网络"))
 		os.Exit(-1)
 	}
-	fmt.Println(content)
 
 	PicURL := findPicURL(content)
 	fmt.Println("PicURL =>", PicURL)
