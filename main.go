@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"syscall"
 	"time"
 
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -19,25 +20,30 @@ const (
 	BingRoot = "http://cn.bing.com/"
 	// GetTimeGap How Long to Get a New Images.
 	GetTimeGap = 24 * 60 * 60
-	// Version  for application
+	// Version  for application.
 	Version = "1.0.0"
+	// LogFile log every picture url.
+	LogFile = "./img_url.txt"
 	// PicRegexp regexp pictures root.
 	PicRegexp = `[^"]+.jpg`
+	// O_APPEND append string when write file.
+	O_APPEND = syscall.O_APPEND
 )
 
 // regexp example:
 // g_img={url: "http://s.cn.bing.net/az/hprichbg/rb/LacsdesCheserys_ZH-CN10032851647_1920x1080.jpg",id:'bgDiv'
 
 // SaveRoot The Root You Save Images.
-// var SaveRoot = kingpin.Flag("root", "the root you want to save these pictures.").Short('r').Required().String()
+var SaveRoot = kingpin.Flag("root", "the root you want to save these pictures.").Short('r').Required().String()
 
 func init() {
-	// kingpin.Parse()
+	kingpin.Parse()
 	kingpin.Version(Version)
 }
 
 func main() {
-	HandleTime := time.NewTimer(time.Second)
+	// Start right now.
+	HandleTime := time.NewTimer(time.Millisecond)
 
 	for {
 		select {
@@ -63,26 +69,11 @@ func GetAndSave() {
 		// TODO: Send E-mail to Me.
 		panic(err)
 	}
+	err = logFile(PicURL)
+	if err != nil {
+		panic(err)
+	}
 	log.Println("Get And Save Today Picture Done.")
-}
-
-func getPic(url string) (err error) {
-	picRes, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-
-	defer picRes.Body.Close()
-
-	err = saveFile(picRes.Body)
-	if err != nil {
-		log.Println("save file error:", err)
-	}
-	return nil
-}
-
-func findPicURL(content string) (url string) {
-	return regexp.MustCompile(PicRegexp).FindString(content)
 }
 
 func getBingContent(url string) (content string, status int) {
@@ -103,17 +94,76 @@ func getBingContent(url string) (content string, status int) {
 	return
 }
 
+func getPic(url string) (err error) {
+	picRes, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+
+	defer picRes.Body.Close()
+
+	err = saveFile(picRes.Body)
+	if err != nil {
+		log.Println("save file error:", err)
+		return err
+	}
+	return nil
+}
+
+func findPicURL(content string) (url string) {
+	return regexp.MustCompile(PicRegexp).FindString(content)
+}
+
 func saveFile(rc io.ReadCloser) error {
 	date := time.Now().Format("2006-01-02")
+	fileName := verifyRoot(*SaveRoot) + date + ".jpg"
 
-	file, err := os.Create(date + ".jpg")
+	file, err := os.Create(fileName)
 	if err != nil {
 		if err == os.ErrExist {
-			file, _ = os.Open(date + ".jpg")
+			file, _ = os.Open(fileName)
 		} else {
 			return err
 		}
 	}
 	_, err = io.Copy(file, rc)
+	defer file.Close()
 	return err
+}
+
+func logFile(urlContent string) error {
+	var file *os.File
+	var err error
+	if isExist(LogFile) {
+		file, err = os.OpenFile(LogFile, O_APPEND|os.O_WRONLY, os.ModeAppend)
+	} else {
+		log.Println("log file not exist, creating...")
+		file, err = os.Create(LogFile)
+	}
+	if err != nil {
+		return err
+	}
+
+	_, err = file.WriteString("\n" + time.Now().Format("2006-01-02") + " : \n" + urlContent)
+	if err != nil {
+		log.Println("write picture URL to file error:", err)
+	}
+	defer file.Close()
+	return err
+}
+
+func verifyRoot(root string) string {
+	if root == "" {
+		return "./"
+	}
+
+	if root[len(root)-1] != '/' {
+		return root + "/"
+	}
+	return root
+}
+
+func isExist(fileName string) bool {
+	_, err := os.Stat(fileName)
+	return err == nil || os.IsExist(err)
 }
